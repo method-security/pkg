@@ -5,6 +5,11 @@ on:
     tags:
       - v*
 
+permissions:
+  id-token: write # For cosign
+  packages: write # For GHCR
+  contents: write # To upload archives as release assets
+
 jobs:
   build-linux:
     runs-on: ubuntu-latest
