@@ -46,7 +46,7 @@ func TestSignal_EncodeContent(t *testing.T) {
 	// Create a sample Signal instance
 	now := datetime.DateTime(time.Now())
 	content := "Sample content"
-	signal := sig.NewSignal(content, now, nil, 200, nil)
+	signal := sig.NewSignal(content, &now, nil, 200, nil)
 
 	// Encode the content
 	err := signal.EncodeContent()
@@ -66,7 +66,7 @@ func TestSignal_AddError(t *testing.T) {
 	// Create a sample Signal instance
 	now := datetime.DateTime(time.Now())
 	content := "Sample content"
-	signal := sig.NewSignal(content, now, nil, 200, nil)
+	signal := sig.NewSignal(content, &now, nil, 200, nil)
 
 	// Add an error to the Signal
 	err := errors.New("Sample error")
