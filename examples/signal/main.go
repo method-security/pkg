@@ -31,13 +31,13 @@ func main() {
 	jsonConfig := writer.NewOutputConfig(nil, writer.NewFormat(writer.JSON))
 	yamlConfig := writer.NewOutputConfig(nil, writer.NewFormat(writer.YAML))
 
-	_ = writer.Write(report, signalConfig, startedAt, &startedAt, status, nil)
+	_ = writer.Write(report, signalConfig, &startedAt, &startedAt, status, nil)
 	fmt.Println()
 	fmt.Println()
-	_ = writer.Write(report, jsonConfig, startedAt, &startedAt, status, nil)
+	_ = writer.Write(report, jsonConfig, &startedAt, &startedAt, status, nil)
 	fmt.Println()
 	fmt.Println()
-	_ = writer.Write(report, yamlConfig, startedAt, &startedAt, status, nil)
+	_ = writer.Write(report, yamlConfig, &startedAt, &startedAt, status, nil)
 
 	os.Exit(0)
 }

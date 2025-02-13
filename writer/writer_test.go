@@ -80,7 +80,7 @@ func TestWrite(t *testing.T) {
 	// Run test cases
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			err := writer.Write(tc.report, tc.config, tc.startedAt, tc.completedAt, tc.status, tc.errorMessage)
+			err := writer.Write(tc.report, tc.config, &tc.startedAt, tc.completedAt, tc.status, tc.errorMessage)
 			if err != nil && err.Error() != tc.expectedErr.Error() {
 				t.Errorf("Unexpected error while encoding content: %v", err)
 			}
