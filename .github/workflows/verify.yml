@@ -1,12 +1,7 @@
 name: 🙏🏻 Verify
 
 on:
-  pull_request:
-    paths:
-      - "**.*"
-  push:
-    branches:
-      - develop
+  workflow_call:
 
 env:
   GO_VERSION: "1.26"
