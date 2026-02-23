@@ -1,8 +1,6 @@
 module github.com/Method-Security/pkg
 
-go 1.24
-
-toolchain go1.24.2
+go 1.26.0
 
 require (
 	github.com/palantir/pkg/datetime v1.1.0

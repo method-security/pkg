@@ -1,12 +1,7 @@
 name: 🚨 CodeQL Analysis
 
 on:
-  pull_request:
-    paths:
-      - "**.*"
-  push:
-    branches:
-      - develop
+  workflow_call:
 jobs:
   analyze:
     name: Analyze
