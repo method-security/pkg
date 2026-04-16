@@ -5,6 +5,7 @@
 package httpclient
 
 import (
+	"bytes"
 	"context"
 	"crypto/tls"
 	"encoding/json"
@@ -134,14 +135,22 @@ type RedirectHop struct {
 	StatusCode int
 }
 
-// applyHeaders sets default and per-request headers on the request.
-func (c *Client) applyHeaders(req *http.Request, headers map[string]string) {
+// applyDefaultHeaders sets default headers on the request.
+// Does not override headers already set on the request.
+func (c *Client) applyDefaultHeaders(req *http.Request) {
 	for k, v := range c.defaultHeaders {
-		req.Header.Set(k, v)
+		if req.Header.Get(k) == "" {
+			req.Header.Set(k, v)
+		}
 	}
+}
+
+// applyHeaders sets per-request headers, then fills in any remaining defaults.
+func (c *Client) applyHeaders(req *http.Request, headers map[string]string) {
 	for k, v := range headers {
 		req.Header.Set(k, v)
 	}
+	c.applyDefaultHeaders(req)
 }
 
 // Get performs an HTTP GET request.
@@ -190,8 +199,9 @@ func (c *Client) PostWithHeaders(ctx context.Context, url string, body any, head
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
-	req.Header.Set("Content-Type", "application/json")
 	c.applyHeaders(req, headers)
+	// Set Content-Type after applyHeaders so defaults can't override it.
+	req.Header.Set("Content-Type", "application/json")
 	return c.Do(req)
 }
 
@@ -206,8 +216,9 @@ func (c *Client) PostFormWithHeaders(ctx context.Context, requestURL string, val
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
-	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	c.applyHeaders(req, headers)
+	// Set Content-Type after applyHeaders so defaults can't override it.
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	return c.Do(req)
 }
 
@@ -221,9 +232,38 @@ func (c *Client) Request(ctx context.Context, method, requestURL string, body io
 	return c.Do(req)
 }
 
+// readResponse reads the body and constructs a Response.
+func readResponse(resp *http.Response, redirectChain []RedirectHop) (*Response, error) {
+	body, readErr := io.ReadAll(resp.Body)
+	_ = resp.Body.Close()
+	if readErr != nil {
+		return nil, fmt.Errorf("failed to read response body: %w", readErr)
+	}
+	return &Response{
+		StatusCode:    resp.StatusCode,
+		Headers:       resp.Header,
+		Body:          body,
+		RedirectChain: redirectChain,
+	}, nil
+}
+
 // Do executes an HTTP request, handling redirects manually.
 func (c *Client) Do(req *http.Request) (*Response, error) {
 	var redirectChain []RedirectHop
+
+	// Buffer the request body for replay on 307/308 redirects.
+	var bodyBuffer []byte
+	if req.Body != nil {
+		var err error
+		bodyBuffer, err = io.ReadAll(req.Body)
+		if err != nil {
+			return nil, fmt.Errorf("failed to buffer request body: %w", err)
+		}
+		req.Body = io.NopCloser(bytes.NewReader(bodyBuffer))
+	}
+
+	// Capture the original headers for replay on redirects.
+	originalHeaders := req.Header.Clone()
 	currentReq := req
 
 	for redirects := 0; ; redirects++ {
@@ -234,17 +274,7 @@ func (c *Client) Do(req *http.Request) (*Response, error) {
 
 		// Not a redirect, or we've exhausted our redirect budget — read body and return.
 		if resp.StatusCode < 300 || resp.StatusCode >= 400 || redirects >= c.options.MaxRedirects {
-			body, readErr := io.ReadAll(resp.Body)
-			_ = resp.Body.Close()
-			if readErr != nil {
-				return nil, fmt.Errorf("failed to read response body: %w", readErr)
-			}
-			return &Response{
-				StatusCode:    resp.StatusCode,
-				Headers:       resp.Header,
-				Body:          body,
-				RedirectChain: redirectChain,
-			}, nil
+			return readResponse(resp, redirectChain)
 		}
 
 		// It's a redirect. Record the hop if tracking.
@@ -257,15 +287,11 @@ func (c *Client) Do(req *http.Request) (*Response, error) {
 
 		// Get location header.
 		location := resp.Header.Get("Location")
-		_ = resp.Body.Close()
 		if location == "" {
 			// Redirect with no Location — return the response as-is.
-			return &Response{
-				StatusCode:    resp.StatusCode,
-				Headers:       resp.Header,
-				RedirectChain: redirectChain,
-			}, nil
+			return readResponse(resp, redirectChain)
 		}
+		_ = resp.Body.Close()
 
 		// Resolve relative redirect URL.
 		nextURL, parseErr := currentReq.URL.Parse(location)
@@ -278,17 +304,22 @@ func (c *Client) Do(req *http.Request) (*Response, error) {
 			return nil, fmt.Errorf("cross-domain redirect blocked: %s -> %s", currentReq.URL.Host, nextURL.Host)
 		}
 
-		// Build the next request (GET for 301/302/303, preserve method for 307/308).
+		// Build the next request (GET for 301/302/303, preserve method+body for 307/308).
 		nextMethod := http.MethodGet
+		var nextBody io.Reader
 		if resp.StatusCode == http.StatusTemporaryRedirect || resp.StatusCode == http.StatusPermanentRedirect {
 			nextMethod = currentReq.Method
+			if bodyBuffer != nil {
+				nextBody = bytes.NewReader(bodyBuffer)
+			}
 		}
 
-		nextReq, err := http.NewRequestWithContext(currentReq.Context(), nextMethod, nextURL.String(), nil)
+		nextReq, err := http.NewRequestWithContext(currentReq.Context(), nextMethod, nextURL.String(), nextBody)
 		if err != nil {
 			return nil, fmt.Errorf("failed to create redirect request: %w", err)
 		}
-		c.applyHeaders(nextReq, nil)
+		// Preserve original headers (including per-request ones) across redirects.
+		nextReq.Header = originalHeaders.Clone()
 		currentReq = nextReq
 	}
 }

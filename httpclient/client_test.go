@@ -8,6 +8,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -413,6 +414,72 @@ func TestMethodPreservedOn307(t *testing.T) {
 	}
 	if len(methods) != 2 || methods[0] != "POST" || methods[1] != "POST" {
 		t.Errorf("expected POST preserved on 307 redirect, got methods: %v", methods)
+	}
+}
+
+func TestBodyPreservedOn307(t *testing.T) {
+	var receivedBody string
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api", func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, "/api/v2", http.StatusTemporaryRedirect)
+	})
+	mux.HandleFunc("/api/v2", func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		receivedBody = string(body)
+		w.WriteHeader(http.StatusOK)
+	})
+	server := httptest.NewServer(mux)
+	defer server.Close()
+
+	c := New()
+	_, err := c.Post(context.Background(), server.URL+"/api", map[string]string{"key": "value"})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if receivedBody == "" {
+		t.Error("expected body to be preserved on 307 redirect, got empty body")
+	}
+	if !contains(receivedBody, "key") {
+		t.Errorf("expected body to contain 'key', got: %s", receivedBody)
+	}
+}
+
+func TestHeadersPreservedOnRedirect(t *testing.T) {
+	var receivedAuth string
+	mux := http.NewServeMux()
+	mux.HandleFunc("/a", func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, "/b", http.StatusFound)
+	})
+	mux.HandleFunc("/b", func(w http.ResponseWriter, r *http.Request) {
+		receivedAuth = r.Header.Get("Authorization")
+		w.WriteHeader(http.StatusOK)
+	})
+	server := httptest.NewServer(mux)
+	defer server.Close()
+
+	c := New()
+	_, err := c.GetWithHeaders(context.Background(), server.URL+"/a", map[string]string{
+		"Authorization": "Bearer secret",
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if receivedAuth != "Bearer secret" {
+		t.Errorf("expected Authorization header preserved on redirect, got '%s'", receivedAuth)
+	}
+}
+
+func TestContentTypeNotOverriddenByDefaults(t *testing.T) {
+	var receivedContentType string
+	server := httptest.NewServer(http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
+		receivedContentType = r.Header.Get("Content-Type")
+	}))
+	defer server.Close()
+
+	c := New(WithDefaultHeaders(map[string]string{"Content-Type": "text/plain"}))
+	_, _ = c.Post(context.Background(), server.URL, map[string]string{"a": "b"})
+	if receivedContentType != "application/json" {
+		t.Errorf("expected application/json, got '%s' (default header overrode Content-Type)", receivedContentType)
 	}
 }
 
