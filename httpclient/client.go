@@ -318,8 +318,15 @@ func (c *Client) Do(req *http.Request) (*Response, error) {
 		if err != nil {
 			return nil, fmt.Errorf("failed to create redirect request: %w", err)
 		}
-		// Preserve original headers (including per-request ones) across redirects.
-		nextReq.Header = originalHeaders.Clone()
+		// Preserve original headers across redirects, but strip sensitive
+		// headers on cross-domain redirects to prevent credential leaking.
+		nextHeaders := originalHeaders.Clone()
+		if currentReq.URL.Host != nextURL.Host {
+			nextHeaders.Del("Authorization")
+			nextHeaders.Del("Cookie")
+			nextHeaders.Del("Www-Authenticate")
+		}
+		nextReq.Header = nextHeaders
 		currentReq = nextReq
 	}
 }

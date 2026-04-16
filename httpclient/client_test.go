@@ -469,6 +469,33 @@ func TestHeadersPreservedOnRedirect(t *testing.T) {
 	}
 }
 
+func TestSensitiveHeadersStrippedOnCrossDomainRedirect(t *testing.T) {
+	var receivedAuth string
+	// Second server (different host) captures the auth header
+	dest := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		receivedAuth = r.Header.Get("Authorization")
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer dest.Close()
+
+	// First server redirects to the second (cross-domain)
+	origin := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, dest.URL+"/target", http.StatusFound)
+	}))
+	defer origin.Close()
+
+	c := New()
+	_, err := c.GetWithHeaders(context.Background(), origin.URL, map[string]string{
+		"Authorization": "Bearer secret-token",
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if receivedAuth != "" {
+		t.Errorf("expected Authorization header stripped on cross-domain redirect, got '%s'", receivedAuth)
+	}
+}
+
 func TestContentTypeNotOverriddenByDefaults(t *testing.T) {
 	var receivedContentType string
 	server := httptest.NewServer(http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
