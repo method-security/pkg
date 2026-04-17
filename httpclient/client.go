@@ -272,8 +272,14 @@ func (c *Client) Do(req *http.Request) (*Response, error) {
 			return nil, fmt.Errorf("request failed: %w", err)
 		}
 
-		// Not a redirect, or we've exhausted our redirect budget — read body and return.
-		if resp.StatusCode < 300 || resp.StatusCode >= 400 || redirects >= c.options.MaxRedirects {
+		// Only treat actual redirect status codes as redirects (not 304 Not Modified, etc.).
+		isRedirect := resp.StatusCode == http.StatusMovedPermanently ||
+			resp.StatusCode == http.StatusFound ||
+			resp.StatusCode == http.StatusSeeOther ||
+			resp.StatusCode == http.StatusTemporaryRedirect ||
+			resp.StatusCode == http.StatusPermanentRedirect
+
+		if !isRedirect || redirects >= c.options.MaxRedirects {
 			return readResponse(resp, redirectChain)
 		}
 
@@ -304,13 +310,18 @@ func (c *Client) Do(req *http.Request) (*Response, error) {
 			return nil, fmt.Errorf("cross-domain redirect blocked: %s -> %s", currentReq.URL.Host, nextURL.Host)
 		}
 
-		// Build the next request (GET for 301/302/303, preserve method+body for 307/308).
-		nextMethod := http.MethodGet
+		// Determine method for the redirected request:
+		// - 307/308: preserve original method and body
+		// - 301/302/303: preserve GET/HEAD, convert others to GET (per HTTP spec)
+		nextMethod := currentReq.Method
 		var nextBody io.Reader
 		if resp.StatusCode == http.StatusTemporaryRedirect || resp.StatusCode == http.StatusPermanentRedirect {
-			nextMethod = currentReq.Method
 			if bodyBuffer != nil {
 				nextBody = bytes.NewReader(bodyBuffer)
+			}
+		} else {
+			if nextMethod != http.MethodGet && nextMethod != http.MethodHead {
+				nextMethod = http.MethodGet
 			}
 		}
 
