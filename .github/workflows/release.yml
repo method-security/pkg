@@ -15,18 +15,18 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Code checkout
-        uses: actions/checkout@v3
+        uses: actions/checkout@f43a0e5ff2bd294095638e18286ca9a3d1956744 # ratchet:actions/checkout@v3
         with:
           fetch-depth: 0
       - name: Set up Go
-        uses: actions/setup-go@v4
+        uses: actions/setup-go@7b8cf10d4e4a01d4992d18a89f4d7dc5a3e6d6f4 # ratchet:actions/setup-go@v4
         with:
           go-version: "1.26"
 
       - name: Run GoReleaser
-        uses: goreleaser/goreleaser-action@v4
+        uses: goreleaser/goreleaser-action@5fdedb94abba051217030cc86d4523cf3f02243d # ratchet:goreleaser/goreleaser-action@v4
         with:
-          version: latest
+          version: v2.9.0
           args: release -f .goreleaser.yaml --clean
         env:
           GITHUB_TOKEN: "${{ secrets.GITHUB_TOKEN }}"
