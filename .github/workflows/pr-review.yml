@@ -9,11 +9,17 @@ on:
       - develop
 
 permissions:
+  contents: read
   id-token: write
   packages: write
   actions: read
 
 jobs:
+  ratchet:
+    name: 🔩 Ratchet Lint
+    uses: ./.github/workflows/ratchet.yml
+    secrets: inherit
+
   codeql:
     name: 🚨 CodeQL Analysis
     uses: ./.github/workflows/codeql.yml
@@ -36,6 +42,7 @@ jobs:
       - codeql
       - release-test
       - verify
+      - ratchet
 
     runs-on: ubuntu-latest
 
