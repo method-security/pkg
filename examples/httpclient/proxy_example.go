@@ -8,6 +8,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"time"
 
 	"github.com/Method-Security/pkg/httpclient"
 )
@@ -60,7 +61,7 @@ func main() {
 	// Example 5: Combining Proxy with Other Options
 	advancedClient := httpclient.New(
 		httpclient.WithHTTPProxy("http://proxy.example.com:8080"),
-		httpclient.WithTimeout(30),
+		httpclient.WithTimeout(30*time.Second),
 		httpclient.WithTLSVerify(false),
 		httpclient.WithDefaultHeaders(map[string]string{
 			"User-Agent": "MethodSecurity/1.0",
