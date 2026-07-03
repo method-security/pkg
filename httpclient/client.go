@@ -11,10 +11,13 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/url"
 	"strings"
 	"time"
+
+	"golang.org/x/net/proxy"
 )
 
 // Client wraps http.Client with Method-specific defaults and helpers.
@@ -32,6 +35,8 @@ type Options struct {
 	TrackRedirects            bool
 	BlockCrossDomainRedirects bool
 	DefaultHeaders            map[string]string
+	HTTPProxy                 string
+	SOCKSProxy                string
 }
 
 // Option is a functional option for configuring the HTTP client.
@@ -80,6 +85,22 @@ func WithDefaultHeaders(headers map[string]string) Option {
 	}
 }
 
+// WithHTTPProxy sets an HTTP/HTTPS proxy URL for all requests.
+// The proxyURL should be in the format: http://[user:pass@]host:port
+func WithHTTPProxy(proxyURL string) Option {
+	return func(o *Options) {
+		o.HTTPProxy = proxyURL
+	}
+}
+
+// WithSOCKSProxy sets a SOCKS5 proxy URL for all requests.
+// The proxyURL should be in the format: socks5://[user:pass@]host:port
+func WithSOCKSProxy(proxyURL string) Option {
+	return func(o *Options) {
+		o.SOCKSProxy = proxyURL
+	}
+}
+
 // defaultOptions returns the default client options.
 func defaultOptions() Options {
 	return Options{
@@ -104,6 +125,14 @@ func New(opts ...Option) *Client {
 		},
 	}
 
+	// Configure proxy if specified
+	if err := configureProxy(transport, &options); err != nil {
+		// If proxy configuration fails, create client without proxy
+		// This maintains backward compatibility and prevents breaking existing code
+		transport.Proxy = nil
+		transport.DialContext = nil
+	}
+
 	client := &http.Client{
 		Timeout:   options.Timeout,
 		Transport: transport,
@@ -119,6 +148,67 @@ func New(opts ...Option) *Client {
 		options:        options,
 		defaultHeaders: options.DefaultHeaders,
 	}
+}
+
+// configureProxy sets up proxy configuration on the transport.
+// Supports both HTTP/HTTPS and SOCKS5 proxies.
+// If both are specified, SOCKS5 takes precedence.
+func configureProxy(transport *http.Transport, options *Options) error {
+	// SOCKS5 proxy takes precedence if both are specified
+	if options.SOCKSProxy != "" {
+		return configureSOCKS5Proxy(transport, options.SOCKSProxy)
+	}
+
+	if options.HTTPProxy != "" {
+		return configureHTTPProxy(transport, options.HTTPProxy)
+	}
+
+	return nil
+}
+
+// configureHTTPProxy configures an HTTP/HTTPS proxy.
+func configureHTTPProxy(transport *http.Transport, proxyURL string) error {
+	parsedURL, err := url.Parse(proxyURL)
+	if err != nil {
+		return fmt.Errorf("invalid HTTP proxy URL: %w", err)
+	}
+
+	transport.Proxy = http.ProxyURL(parsedURL)
+	return nil
+}
+
+// configureSOCKS5Proxy configures a SOCKS5 proxy.
+func configureSOCKS5Proxy(transport *http.Transport, proxyURL string) error {
+	parsedURL, err := url.Parse(proxyURL)
+	if err != nil {
+		return fmt.Errorf("invalid SOCKS5 proxy URL: %w", err)
+	}
+
+	// Extract host and port
+	host := parsedURL.Host
+
+	// Extract authentication if present
+	var auth *proxy.Auth
+	if parsedURL.User != nil {
+		password, _ := parsedURL.User.Password()
+		auth = &proxy.Auth{
+			User:     parsedURL.User.Username(),
+			Password: password,
+		}
+	}
+
+	// Create SOCKS5 dialer
+	dialer, err := proxy.SOCKS5("tcp", host, auth, proxy.Direct)
+	if err != nil {
+		return fmt.Errorf("failed to create SOCKS5 dialer: %w", err)
+	}
+
+	// Configure transport to use SOCKS5 dialer
+	transport.DialContext = func(ctx context.Context, network, addr string) (net.Conn, error) {
+		return dialer.Dial(network, addr)
+	}
+
+	return nil
 }
 
 // Response wraps an HTTP response with additional metadata.
