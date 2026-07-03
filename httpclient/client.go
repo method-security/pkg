@@ -24,6 +24,7 @@ type Client struct {
 	httpClient     *http.Client
 	options        Options
 	defaultHeaders map[string]string
+	proxyConfigErr error
 }
 
 // Options configures the HTTP client behavior.
@@ -124,13 +125,7 @@ func New(opts ...Option) *Client {
 		},
 	}
 
-	// Configure proxy if specified
-	if err := configureProxy(transport, &options); err != nil {
-		// If proxy configuration fails, create client without proxy
-		// This maintains backward compatibility and prevents breaking existing code
-		transport.Proxy = nil
-		transport.DialContext = nil
-	}
+	proxyConfigErr := configureProxy(transport, &options)
 
 	client := &http.Client{
 		Timeout:   options.Timeout,
@@ -146,6 +141,7 @@ func New(opts ...Option) *Client {
 		httpClient:     client,
 		options:        options,
 		defaultHeaders: options.DefaultHeaders,
+		proxyConfigErr: proxyConfigErr,
 	}
 }
 
@@ -176,6 +172,10 @@ func configureHTTPProxy(transport *http.Transport, proxyURL string) error {
 	return nil
 }
 
+func noHTTPProxy(*http.Request) (*url.URL, error) {
+	return nil, nil
+}
+
 // configureSOCKS5Proxy configures a SOCKS5 proxy.
 func configureSOCKS5Proxy(transport *http.Transport, proxyURL string) error {
 	parsedURL, err := url.Parse(proxyURL)
@@ -194,6 +194,7 @@ func configureSOCKS5Proxy(transport *http.Transport, proxyURL string) error {
 	}
 
 	// Configure transport to use SOCKS5 dialer
+	transport.Proxy = noHTTPProxy
 	transport.DialContext = contextDialer.DialContext
 
 	return nil
@@ -327,6 +328,10 @@ func readResponse(resp *http.Response, redirectChain []RedirectHop) (*Response, 
 
 // Do executes an HTTP request, handling redirects manually.
 func (c *Client) Do(req *http.Request) (*Response, error) {
+	if c.proxyConfigErr != nil {
+		return nil, fmt.Errorf("proxy configuration failed: %w", c.proxyConfigErr)
+	}
+
 	var redirectChain []RedirectHop
 
 	// Buffer the request body for replay on 307/308 redirects.

@@ -588,6 +588,42 @@ func TestSOCKSProxyURLDefaultsPort(t *testing.T) {
 	}
 }
 
+func TestInvalidProxyConfigurationFailsRequest(t *testing.T) {
+	c := New(WithSOCKSProxy("http://proxy.example.com:8080"))
+
+	_, err := c.Get(context.Background(), "http://example.com")
+	if err == nil {
+		t.Fatal("expected invalid proxy configuration to fail the request")
+	}
+	if !contains(err.Error(), "proxy configuration failed") {
+		t.Fatalf("expected proxy configuration error, got %v", err)
+	}
+}
+
+func TestSOCKSProxyDisablesAmbientHTTPProxy(t *testing.T) {
+	t.Setenv("HTTP_PROXY", "http://127.0.0.1:1")
+
+	transport := &http.Transport{}
+	if err := configureSOCKS5Proxy(transport, "socks5://127.0.0.1:1080"); err != nil {
+		t.Fatalf("configureSOCKS5Proxy returned error: %v", err)
+	}
+	if transport.Proxy == nil {
+		t.Fatal("expected SOCKS proxy to explicitly disable HTTP proxy lookup")
+	}
+
+	requestURL, err := url.Parse("http://example.com")
+	if err != nil {
+		t.Fatalf("failed to parse request URL: %v", err)
+	}
+	proxyURL, err := transport.Proxy(&http.Request{URL: requestURL})
+	if err != nil {
+		t.Fatalf("expected proxy lookup to succeed: %v", err)
+	}
+	if proxyURL != nil {
+		t.Fatalf("expected HTTP proxy lookup to be disabled, got %s", proxyURL)
+	}
+}
+
 func TestBothProxiesConfigured(t *testing.T) {
 	// SOCKS5 should take precedence
 	c := New(
