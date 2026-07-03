@@ -11,7 +11,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"net"
 	"net/http"
 	"net/url"
 	"strings"
@@ -184,29 +183,18 @@ func configureSOCKS5Proxy(transport *http.Transport, proxyURL string) error {
 		return fmt.Errorf("invalid SOCKS5 proxy URL: %w", err)
 	}
 
-	// Extract host and port
-	host := parsedURL.Host
-
-	// Extract authentication if present
-	var auth *proxy.Auth
-	if parsedURL.User != nil {
-		password, _ := parsedURL.User.Password()
-		auth = &proxy.Auth{
-			User:     parsedURL.User.Username(),
-			Password: password,
-		}
-	}
-
 	// Create SOCKS5 dialer
-	dialer, err := proxy.SOCKS5("tcp", host, auth, proxy.Direct)
+	dialer, err := proxy.FromURL(parsedURL, proxy.Direct)
 	if err != nil {
 		return fmt.Errorf("failed to create SOCKS5 dialer: %w", err)
 	}
+	contextDialer, ok := dialer.(proxy.ContextDialer)
+	if !ok {
+		return fmt.Errorf("SOCKS5 dialer does not support context-aware dialing")
+	}
 
 	// Configure transport to use SOCKS5 dialer
-	transport.DialContext = func(ctx context.Context, network, addr string) (net.Conn, error) {
-		return dialer.Dial(network, addr)
-	}
+	transport.DialContext = contextDialer.DialContext
 
 	return nil
 }

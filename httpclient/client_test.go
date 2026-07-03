@@ -7,6 +7,7 @@ package httpclient
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -548,6 +549,42 @@ func TestWithSOCKSProxyAuthentication(t *testing.T) {
 	c := New(WithSOCKSProxy("socks5://user:pass@proxy.example.com:1080"))
 	if c.options.SOCKSProxy != "socks5://user:pass@proxy.example.com:1080" {
 		t.Errorf("expected SOCKS proxy with auth set, got '%s'", c.options.SOCKSProxy)
+	}
+}
+
+func TestSOCKSProxyDialContextHonorsCanceledContext(t *testing.T) {
+	transport := &http.Transport{}
+	if err := configureSOCKS5Proxy(transport, "socks5://127.0.0.1:1"); err != nil {
+		t.Fatalf("configureSOCKS5Proxy returned error: %v", err)
+	}
+	if transport.DialContext == nil {
+		t.Fatal("expected SOCKS proxy to configure DialContext")
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	_, err := transport.DialContext(ctx, "tcp", "example.com:80")
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("expected canceled context error, got %v", err)
+	}
+}
+
+func TestSOCKSProxyURLDefaultsPort(t *testing.T) {
+	transport := &http.Transport{}
+	if err := configureSOCKS5Proxy(transport, "socks5://127.0.0.1"); err != nil {
+		t.Fatalf("configureSOCKS5Proxy returned error: %v", err)
+	}
+	if transport.DialContext == nil {
+		t.Fatal("expected SOCKS proxy to configure DialContext")
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	_, err := transport.DialContext(ctx, "tcp", "example.com:80")
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("expected canceled context error after applying default port, got %v", err)
 	}
 }
 
