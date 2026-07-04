@@ -7,6 +7,7 @@ require (
 	github.com/palantir/pkg/safejson v1.1.0
 	github.com/palantir/pkg/safeyaml v1.1.0
 	github.com/palantir/witchcraft-go-logging v1.57.0
+	golang.org/x/net v0.56.0
 )
 
 require (

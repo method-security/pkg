@@ -29,6 +29,10 @@ github.com/palantir/witchcraft-go-params
 # github.com/palantir/witchcraft-go-tracing v1.37.0
 ## explicit; go 1.21
 github.com/palantir/witchcraft-go-tracing/wtracing
+# golang.org/x/net v0.56.0
+## explicit; go 1.25.0
+golang.org/x/net/internal/socks
+golang.org/x/net/proxy
 # gopkg.in/yaml.v2 v2.4.0
 ## explicit; go 1.15
 gopkg.in/yaml.v2
