@@ -49,4 +49,6 @@ existing request methods. A positive limit returns at most `n` bytes and
 `ErrResponseBodyTooLarge` when exceeded; the returned response retains status and
 headers. Use `errors.Is(err, httpclient.ErrResponseBodyTooLarge)` to distinguish
 this condition. JSON convenience methods stop on this error rather than decoding
-truncated JSON. Zero or negative limits preserve unlimited buffering.
+truncated JSON. Zero or negative limits preserve unlimited buffering. `IsAlive`
+still evaluates the returned status when the only error is an oversized body;
+404 and 502 remain unavailable, and other request errors still return false.

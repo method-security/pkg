@@ -77,6 +77,29 @@ func TestResponseBodyLimit(t *testing.T) {
 	}
 }
 
+func TestIsAliveWithBodyLimit(t *testing.T) {
+	for _, status := range []int{http.StatusOK, http.StatusForbidden, http.StatusNotFound, http.StatusBadGateway} {
+		t.Run(http.StatusText(status), func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				w.WriteHeader(status)
+				_, _ = io.WriteString(w, "oversized response")
+			}))
+			defer server.Close()
+			c := New(WithMaxResponseBodyBytes(4))
+			defer c.CloseIdleConnections()
+			want := status != http.StatusNotFound && status != http.StatusBadGateway
+			if got := c.IsAlive(context.Background(), server.URL); got != want {
+				t.Fatalf("status %d: IsAlive = %t, want %t", status, got, want)
+			}
+			ctx, cancel := context.WithCancel(context.Background())
+			cancel()
+			if c.IsAlive(ctx, server.URL) {
+				t.Fatal("canceled request must not be considered alive")
+			}
+		})
+	}
+}
+
 func TestDefaultTransportUnchanged(t *testing.T) {
 	c := New(WithTransport(nil))
 	transport := c.httpClient.Transport.(*http.Transport)

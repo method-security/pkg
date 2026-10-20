@@ -510,7 +510,7 @@ func (c *Client) PostJSON(ctx context.Context, url string, body any, dest any) (
 // IsAlive checks if a URL responds with a non-404/502 status code.
 func (c *Client) IsAlive(ctx context.Context, url string) bool {
 	resp, err := c.Get(ctx, url)
-	if err != nil {
+	if resp == nil || (err != nil && !errors.Is(err, ErrResponseBodyTooLarge)) {
 		return false
 	}
 	return resp.StatusCode != http.StatusNotFound && resp.StatusCode != http.StatusBadGateway
