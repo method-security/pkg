@@ -4,7 +4,7 @@ Existing clients retain their defaults: a 30-second timeout, certificate
 verification, TLS 1.2 minimum, HTTP/2 negotiation, up to ten redirects, and fully
 buffered response bodies without a size limit.
 
-## Discovery Requests
+## Custom Transports
 
 `WithTransport(*http.Transport)` clones a caller-configured transport. This lets a
 scanner connect to a specific IP and port while using a separate URL hostname for
@@ -31,27 +31,16 @@ client := httpclient.New(
 )
 defer client.CloseIdleConnections()
 
-req, err := http.NewRequestWithContext(ctx, http.MethodHead, "https://app.example.com/", nil)
-if err != nil {
-    return err
-}
-response, err := client.Probe(req)
+response, err := client.Head(ctx, "https://app.example.com/")
 ```
 
 Callers can supply `transport.TLSClientConfig` for explicit SNI, self-signed
 certificates, or discovery-only legacy TLS requirements. These settings are not
 enabled globally or by default.
 
-`Probe` performs one round trip, preserving status and headers for any HTTP status.
-It does not follow or parse redirects, even malformed `Location` headers, and does
-not read the response body. It closes the response body before returning; the
-returned `Body` and `RedirectChain` are nil. Request cancellation, client timeout,
-and default headers apply. The caller's request is not modified. Closing an unread
-body can prevent HTTP/1 connection reuse.
-
-`Probe` reports HTTP evidence only: it does not try HTTPS/HTTP alternatives,
-classify services, or treat a TLS handshake alone as an HTTP response. Those
-decisions remain with the scanner.
+The existing request methods retain their normal timeout, redirect, and response
+buffering behavior. Scanner-specific request sequences and service classification
+belong in the calling application, not this package.
 
 ## Bounded Bodies
 
@@ -60,5 +49,4 @@ existing request methods. A positive limit returns at most `n` bytes and
 `ErrResponseBodyTooLarge` when exceeded; the returned response retains status and
 headers. Use `errors.Is(err, httpclient.ErrResponseBodyTooLarge)` to distinguish
 this condition. JSON convenience methods stop on this error rather than decoding
-truncated JSON. Zero or negative limits preserve unlimited buffering. `Probe`
-never buffers a body, regardless of this option.
+truncated JSON. Zero or negative limits preserve unlimited buffering.

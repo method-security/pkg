@@ -74,7 +74,7 @@ func WithTransport(transport *http.Transport) Option {
 
 // WithMaxResponseBodyBytes limits buffered response bodies. Non-positive values
 // retain the default unlimited buffering. Oversized responses return the bounded
-// body and ErrResponseBodyTooLarge. Probe never reads a response body.
+// body and ErrResponseBodyTooLarge.
 func WithMaxResponseBodyBytes(n int64) Option {
 	return func(o *Options) {
 		o.MaxResponseBodyBytes = n
@@ -376,31 +376,6 @@ func (c *Client) readResponse(resp *http.Response, redirectChain []RedirectHop) 
 		Body:          body,
 		RedirectChain: redirectChain,
 	}, nil
-}
-
-// Probe sends exactly one request and returns status and headers without reading
-// the response body. It never follows or parses redirects, even malformed Location
-// headers, and returns a nil Body and RedirectChain. Default headers, the client
-// timeout, request cancellation, and proxy settings still apply. The response body
-// is closed before returning, which can prevent reuse of an HTTP/1 connection.
-func (c *Client) Probe(req *http.Request) (*Response, error) {
-	if c.proxyConfigErr != nil {
-		return nil, fmt.Errorf("proxy configuration failed: %w", c.proxyConfigErr)
-	}
-	ctx := req.Context()
-	if c.options.Timeout > 0 {
-		var cancel context.CancelFunc
-		ctx, cancel = context.WithTimeout(ctx, c.options.Timeout)
-		defer cancel()
-	}
-	request := req.Clone(ctx)
-	c.applyDefaultHeaders(request)
-	resp, err := c.httpClient.Transport.RoundTrip(request)
-	if err != nil {
-		return nil, fmt.Errorf("request failed: %w", err)
-	}
-	_ = resp.Body.Close()
-	return &Response{StatusCode: resp.StatusCode, Headers: resp.Header}, nil
 }
 
 // Do executes an HTTP request, handling redirects manually.
