@@ -13,6 +13,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"strings"
 	"testing"
 	"time"
 )
@@ -442,6 +443,64 @@ func TestBodyPreservedOn307(t *testing.T) {
 	}
 	if !contains(receivedBody, "key") {
 		t.Errorf("expected body to contain 'key', got: %s", receivedBody)
+	}
+}
+
+func TestRequestBodyAcrossRedirectChains(t *testing.T) {
+	const payload = "request payload"
+	for _, first := range []int{301, 302, 303, 307, 308} {
+		for _, second := range []int{307, 308} {
+			t.Run(fmt.Sprintf("%d_to_%d", first, second), func(t *testing.T) {
+				type request struct {
+					path, method, body, header string
+				}
+				requests := make(chan request, 3)
+				server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+					body, err := io.ReadAll(r.Body)
+					if err != nil {
+						t.Errorf("read request body: %v", err)
+						w.WriteHeader(http.StatusBadRequest)
+						return
+					}
+					requests <- request{r.URL.Path, r.Method, string(body), r.Header.Get("X-Test")}
+					switch r.URL.Path {
+					case "/start":
+						http.Redirect(w, r, "/middle", first)
+					case "/middle":
+						http.Redirect(w, r, "/end", second)
+					default:
+						_, _ = w.Write([]byte("done"))
+					}
+				}))
+				defer server.Close()
+
+				client := New(WithRedirectTracking())
+				defer client.CloseIdleConnections()
+				resp, err := client.Request(context.Background(), http.MethodPost, server.URL+"/start", strings.NewReader(payload), map[string]string{"X-Test": "preserved"})
+				if err != nil {
+					t.Fatalf("request: %v", err)
+				}
+				if resp.StatusCode != http.StatusOK || string(resp.Body) != "done" || len(requests) != 3 {
+					t.Fatalf("unexpected final response or request count: %+v, requests=%d", resp, len(requests))
+				}
+				method, body := http.MethodPost, payload
+				if first == 301 || first == 302 || first == 303 {
+					method, body = http.MethodGet, ""
+				}
+				for i, path := range []string{"/start", "/middle", "/end"} {
+					want := request{path, method, body, "preserved"}
+					if i == 0 {
+						want.method, want.body = http.MethodPost, payload
+					}
+					if got := <-requests; got != want {
+						t.Errorf("hop %d: got %+v, want %+v", i, got, want)
+					}
+				}
+				if len(resp.RedirectChain) != 2 || resp.RedirectChain[0].StatusCode != first || resp.RedirectChain[1].StatusCode != second {
+					t.Errorf("unexpected redirect chain: %+v", resp.RedirectChain)
+				}
+			})
+		}
 	}
 }
 
