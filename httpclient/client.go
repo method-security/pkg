@@ -455,6 +455,8 @@ func (c *Client) Do(req *http.Request) (*Response, error) {
 				nextBody = bytes.NewReader(bodyBuffer)
 			}
 		} else {
+			// Later 307/308 redirects must not restore a body dropped by this hop.
+			bodyBuffer = nil
 			if nextMethod != http.MethodGet && nextMethod != http.MethodHead {
 				nextMethod = http.MethodGet
 			}
